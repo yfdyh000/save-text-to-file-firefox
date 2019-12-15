@@ -19,6 +19,7 @@ const TEST_CONNECTIVITY_ACTION = 'TEST_CONNECTIVITY';
 
 function saveOptions() {
   browser.storage.sync.set({
+    saveFullTextOfPage: document.getElementById('saveFullTextOfPage').checked,
     fileNamePrefix: document.getElementById('fileNamePrefix').value,
     dateFormat: document.getElementById('dateFormat').value,
     fileNameComponentOrder: document.getElementById('fileNameComponentOrder').value,
@@ -40,6 +41,7 @@ function saveOptions() {
 
 function restoreOptions() {
   browser.storage.sync.get({
+    saveFullTextOfPage: false,
     fileNamePrefix: DEFAULT_FILE_NAME_PREFIX,
     dateFormat: 0,
     fileNameComponentOrder: 0,
@@ -51,6 +53,7 @@ function restoreOptions() {
     notifications: true,
     conflictAction: 'uniquify'
   }, function(items) {
+    document.getElementById('saveFullTextOfPage').checked = items.saveFullTextOfPage;
     document.getElementById('fileNamePrefix').value = items.fileNamePrefix;
     document.getElementById('dateFormat').value = items.dateFormat;
     document.getElementById('fileNameComponentOrder').value = items.fileNameComponentOrder;
@@ -68,8 +71,7 @@ function appConnectionTest() {
   var testConnectivityPayload = {
     action: TEST_CONNECTIVITY_ACTION
   };
-  var sending = browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload);
-  sending.then(function(response) {
+  browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload).then(function(response) {
     var responseObject = JSON.parse(response);
     if (responseObject.status === 'Success') {
       var para = document.createElement('p');

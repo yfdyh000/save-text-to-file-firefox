@@ -31,6 +31,7 @@ const CUSTOM_DATE_TITLE = '2';
 const CUSTOM_TITLE_DATE = '3';
 const TITLE_CUSTOM_DATE = '4';
 const TITLE_DATE_CUSTOM = '5';
+var saveFullTextOfPage;
 var fileNamePrefix;
 var dateFormat;
 var fileNameComponentOrder;
@@ -54,39 +55,38 @@ function saveTextViaApp(directory, sanitizedFileName, fileContents) {
     conflictAction: conflictAction
   };
 
-  var sending = browser.runtime.sendNativeMessage(
+  browser.runtime.sendNativeMessage(
     HOST_APPLICATION_NAME,
-    payload);
-  sending.then(function onResponse(response) {
+    payload)
+    .then(function onResponse(response) {
     var json = JSON.parse(response);
     if (json.status === 'Success') {
         notify('Text saved.');
     } else {
-      notify('Error occured saving text via host application. Check browser console.');
+      notify('Error occurred saving text via host application. Check browser console.');
       console.log("SaveTextToFile: Native application response: " + response);
     }
   }, function onError(error) {
-    notify('Error occured communicating with host application. Check browser console.');
+    notify('Error occurred communicating with host application. Check browser console.');
     console.log(error);
   });
 }
 
-function saveTextToFile(info) {
-  browser.tabs.executeScript({
-    code: '(' + getSelectionText.toString() + ')()',
+function saveTextToFile(info, tab) {
+  //var tabId = tab.id
+  browser.tabs.executeScript(//tabID, 
+  {
+    code: '(' + getSelectionText.toString() + ')(' + saveFullTextOfPage + ')',
     allFrames: true,
-    matchAboutBlank: true
+    //matchAboutBlank: true
   }, function (results) {
+    //debugger
     if (results[0]) {
-      createFileContents(results[0], function(fileContents) {
-        var blob = new Blob([fileContents], {
-          type: 'text/plain'
-        });
-        var url = URL.createObjectURL(blob);
+      createFileContents(results[0].text, function(fileContents) {
         createFileName(function(fileName) {
           var sanitizedFileName = sanitizeFileName(fileName);
-          var sending = browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload);
-          sending.then(function(response) {
+          browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload)
+          .then(function(response) {
             var responseObject = JSON.parse(response);
             if (responseObject.status === 'Success') {
               saveTextViaApp(directory, sanitizedFileName, fileContents);
@@ -94,7 +94,11 @@ function saveTextToFile(info) {
           }, function(error) {
             console.log('SaveTextToFile: Error communicating between the native application and web extension.');
             console.log(error);
-            startDownloadOfTextToFile(url, sanitizedFileName);
+            var blob = new Blob([fileContents], {
+              type: 'text/plain'
+            });
+            var url = URL.createObjectURL(blob);
+            startDownloadOfTextToFile(url, sanitizedFileName, results[0].fullPageText);
           });
         });
       });
@@ -128,25 +132,31 @@ function createFileName(callback) {
   var extension = _getExtension();
   var customText = fileNamePrefix;
   _getPageTitleToFileName(function() {
-    if (fileNameComponentOrder === DATE_CUSTOM_TITLE) {
-      fileName = date + (date === '' ? '' : fileNameComponentSeparator) + customText + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle;
-    } else if (fileNameComponentOrder === DATE_TITLE_CUSTOM) {
-      fileName = date + (date === '' ? '' : fileNameComponentSeparator) + pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + customText;
-    } else if (fileNameComponentOrder === CUSTOM_DATE_TITLE) {
-      fileName = customText + (date === '' ? '' : fileNameComponentSeparator) + date + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle;
-    } else if (fileNameComponentOrder === CUSTOM_TITLE_DATE) {
-      fileName = customText + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle + (date === '' ? '' : fileNameComponentSeparator) + date;
-    } else if (fileNameComponentOrder === TITLE_CUSTOM_DATE) {
-      fileName = pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + customText + (date === '' ? '' : fileNameComponentSeparator) + date;
-    } else if (fileNameComponentOrder === TITLE_DATE_CUSTOM) {
-      fileName = pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + date + (date === '' ? '' : fileNameComponentSeparator) + customText;
+    switch (fileNameComponentOrder) {
+      case DATE_CUSTOM_TITLE:
+        fileName = date + (date === '' ? '' : fileNameComponentSeparator) + customText + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle;
+        break;
+      case DATE_TITLE_CUSTOM:
+        fileName = date + (date === '' ? '' : fileNameComponentSeparator) + pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + customText;
+        break;
+      case CUSTOM_DATE_TITLE:
+        fileName = customText + (date === '' ? '' : fileNameComponentSeparator) + date + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle;
+        break;
+      case CUSTOM_TITLE_DATE:
+        fileName = customText + (pageTitle === '' ? '' : fileNameComponentSeparator) + pageTitle + (date === '' ? '' : fileNameComponentSeparator) + date;
+        break;
+      case TITLE_CUSTOM_DATE:
+        fileName = pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + customText + (date === '' ? '' : fileNameComponentSeparator) + date;
+        break;
+      case TITLE_DATE_CUSTOM:
+        fileName = pageTitle + (pageTitle === '' ? '' : fileNameComponentSeparator) + date + (date === '' ? '' : fileNameComponentSeparator) + customText;
+        break;
+      default:
+        notify('Error: Filename cannot be empty, please review preferences.');
+        return;
     }
-    if (fileName === '') {
-      notify('Error: Filename cannot be empty, please review preferences.');
-    } else {
-      fileName += extension;
-      callback(fileName);
-    }
+    fileName += extension;
+    callback(fileName);
   });
 
   function _getPageTitleToFileName(callback) {
@@ -168,18 +178,19 @@ function createFileName(callback) {
     var day = _determineDay();
     var month = _determineMonth();
     var year = currentDate.getFullYear();
-    if (dateFormat === DDMMYYYY) {
-      return day + '-' + month + '-' + year;
-    } else if (dateFormat === MMDDYYYY) {
-      return month + '-' + day + '-' + year;
-    } else if (dateFormat === YYYYMMDD) {
-      return year + '-' + month + '-' + day;
-    } else if (dateFormat === YYYYDDMM) {
-      return year + '-' + day + '-' + month;
-    } else if (dateFormat === NONE) {
-      return '';
-    } else {
-      return currentDate.getTime();
+    switch (dateFormat) {
+      case DDMMYYYY:
+        return `${day}-${month}-${year}`;
+      case MMDDYYYY:
+        return `${month}-${day}-${year}`
+      case YYYYMMDD:
+        return `${year}-${month}-${day}`
+      case YYYYDDMM:
+        return `${year}-${day}-${month}`
+      case NONE:
+        return '';
+      default:
+        return currentDate.getTime();
     }
 
     function _determineDay() {
@@ -198,21 +209,30 @@ function createFileName(callback) {
   }
 }
 
-function startDownloadOfTextToFile(url, fileName) {
+function startDownloadOfTextToFile(url, fileName, fullPageText) {
   var options = {
     filename: fileName,
     url: url,
     conflictAction: conflictAction
   };
-  if (!directorySelectionDialog) {
-    options.saveAs = false;
-  } else {
-    options.saveAs = true;
-  }
+  options.saveAs = !!directorySelectionDialog;
   browser.downloads.download(options, function(downloadId) {
     if (downloadId) {
       if (notifications) {
-        notify('Text saved.');
+        //notify('Text saved.');
+        setTimeout(() => {
+          browser.downloads.search({ id: downloadId }).then(detail => {
+            function readableSize(bytes) {
+              var s = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+              var e = Math.floor(Math.log(bytes) / Math.log(1024));
+              return (bytes / Math.pow(1024, Math.floor(e))).toFixed(2) + " " + s[e];
+              // Bug 1190681 - Browser extension |notifications| API needs support for buttons in notifications in Firefox.
+              // Seems no onButtonClicked support in Firefox.
+            }
+            let d = detail[0];
+            notify(`Text saved.\n\nPath: ${d.filename}.\nSize: ${readableSize(d.fileSize)}.`, downloadId, fullPageText);
+          });
+        }, 150);
       }
     } else {
       var error = browser.runtime.lastError.toString();
@@ -221,7 +241,7 @@ function startDownloadOfTextToFile(url, fileName) {
           notify('Save canceled.');
         }
       } else {
-        notify('Error occured.');
+        notify('Error occurred.');
         console.log(error);
       }
     }
@@ -231,27 +251,42 @@ function startDownloadOfTextToFile(url, fileName) {
 browser.contextMenus.create({
   id: MENU_ITEM_ID,
   title: EXTENSION_TITLE,
-  contexts: ['selection']
+  contexts: ['selection', 'page']
 });
 
-browser.contextMenus.onClicked.addListener(function(info) {
+browser.contextMenus.onClicked.addListener(function(info, tab) {
   if (info.menuItemId === MENU_ITEM_ID) {
-    saveTextToFile(info);
+    saveTextToFile(info, tab);
   }
 });
 
-function notify(message) {
-  browser.notifications.clear(NOTIFICATION_ID, function() {
-    browser.notifications.create(NOTIFICATION_ID, {
-      title: EXTENSION_TITLE,
+browser.notifications.onClicked.addListener((notificationId) => {
+  var downloadId = notificationId.match(/download-(\d+)/);
+  //debugger;
+  //if (typeof (downloadId) == "Array" && downloadId.length > 1) {
+  if (downloadId.length > 1) { 
+    downloadId = Number(downloadId[1]);
+  }
+  browser.downloads.show(downloadId);
+});
+function notify(message, id, fullPageText) {
+  //browser.notifications.clear(NOTIFICATION_ID, function() {
+  //debugger;
+  id = !!id ? "download-" + id : "";
+  var title = fullPageText ? EXTENSION_TITLE + ' (page)' : EXTENSION_TITLE + ' (selection)';
+    browser.notifications.create(id, {
+      title: title,
       type: 'basic',
       message: message,
+      //button: button, // no support in Firefox
       iconUrl: browser.runtime.getURL('images/ico.png')
+      // https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/notifications/NotificationOptions 支持按钮
     });
-  });
+  //});
 }
 
 browser.storage.sync.get({
+  saveFullTextOfPage: false,
   fileNamePrefix: DEFAULT_FILE_NAME_PREFIX,
   dateFormat: '0',
   fileNameComponentOrder: '0',
@@ -263,6 +298,7 @@ browser.storage.sync.get({
   notifications: true,
   conflictAction: 'uniquify'
 }, function(items) {
+  saveFullTextOfPage = items.saveFullTextOfPage,
   fileNamePrefix = items.fileNamePrefix;
   dateFormat = items.dateFormat;
   fileNameComponentOrder = items.fileNameComponentOrder;
@@ -275,127 +311,60 @@ browser.storage.sync.get({
   conflictAction = items.conflictAction;
 });
 
-function getSelectionText() {
+function getSelectionText(opt_getFullPageText) {
+  function _getFullPageText() {
+    var range, selection;
+    selection = window.getSelection();
+    range = document.createRange();
+    range.selectNodeContents(document.body);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    var text = window.getSelection().toString();
+    selection.removeAllRanges();
+    return text;
+  }
+
   var text = '';
-  var activeEl = document.activeElement;
-  var activeElTagName = activeEl ? activeEl.tagName.toLowerCase() : null;
+  var fullPageText = false;
   if (window.getSelection) {
     text = window.getSelection().toString();
   }
-  return text;
+  //debugger;
+  if (!text && opt_getFullPageText) {
+    text = _getFullPageText();
+    fullPageText = true;
+  }
+  return { text, fullPageText};
 }
+
 
 browser.commands.onCommand.addListener(function(command) {
   if (command === 'save-text-to-file') {
-    browser.tabs.executeScript({
-      code: '(' + getSelectionText.toString() + ')()',
-      allFrames: true,
-      matchAboutBlank: true
-    }, function (results) {
-      if (results[0]) {
-          saveTextToFile({
-            selectionText: results[0]
-          });
-      }
-    });
+    saveTextToFile();
   }
 });
 
 browser.storage.onChanged.addListener(function(changes) {
-  _updatePrefixOnChange();
-  _updateDateFormatOnChange();
-  _updateFileNameComponentOrderOnChange();
-  _updatePageTitleInFileNameOnChange();
-  _updateFileNameComponentSeparatorOnChange();
-  _updateUrlInFileOnChange();
-  _updateDirectoryOnChange();
-  _updateDirectorySelectionOnChange();
-  _updateNotificationsOnChange();
-  _updateConflictActionOnChange();
-
-  function _updatePrefixOnChange() {
-    if (changes.fileNamePrefix) {
-      if (changes.fileNamePrefix.newValue !== changes.fileNamePrefix.oldValue) {
-        fileNamePrefix = changes.fileNamePrefix.newValue;
-      }
-    }
+  function _setValues(target, change) {
+    if (!(target && change)) return;
+    // if (change.newValue === change.oldValue) return;
+    target = change.newValue;
   }
-
-  function _updateDateFormatOnChange() {
-    if (changes.dateFormat) {
-      if (changes.dateFormat.newValue !== changes.dateFormat.oldValue) {
-        dateFormat = changes.dateFormat.newValue;
-      }
-    }
-  }
-
-  function _updateFileNameComponentOrderOnChange() {
-    if (changes.fileNameComponentOrder) {
-      if (changes.fileNameComponentOrder.newValue !== changes.fileNameComponentOrder.oldValue) {
-        fileNameComponentOrder = changes.fileNameComponentOrder.newValue;
-      }
-    }
-  }
-
-  function _updatePageTitleInFileNameOnChange() {
-    if (changes.prefixPageTitleInFileName) {
-      if (changes.prefixPageTitleInFileName.newValue !== changes.prefixPageTitleInFileName.oldValue) {
-        prefixPageTitleInFileName = changes.prefixPageTitleInFileName.newValue;
-      }
-    }
-  }
-
-  function _updateFileNameComponentSeparatorOnChange() {
-    if (changes.fileNameComponentSeparator) {
-      if (changes.fileNameComponentSeparator.newValue !== changes.fileNameComponentSeparator.oldValue) {
-        fileNameComponentSeparator = changes.fileNameComponentSeparator.newValue;
-      }
-    }
-  }
-
-  function _updateUrlInFileOnChange() {
-    if (changes.urlInFile) {
-      if (changes.urlInFile.newValue !== changes.urlInFile.oldValue) {
-        urlInFile = changes.urlInFile.newValue;
-      }
-    }
-  }
-
-  function _updateDirectoryOnChange() {
-    if (changes.directory) {
-      if (changes.directory.newValue !== changes.directory.oldValue) {
-        directory = changes.directory.newValue;
-      }
-    }
-  }
-
-  function _updateDirectorySelectionOnChange() {
-    if (changes.directorySelectionDialog) {
-      if (changes.directorySelectionDialog.newValue !== changes.directorySelectionDialog.oldValue) {
-        directorySelectionDialog = changes.directorySelectionDialog.newValue;
-      }
-    }
-  }
-
-  function _updateNotificationsOnChange() {
-    if (changes.notifications) {
-      if (changes.notifications.newValue !== changes.notifications.oldValue) {
-        notifications = changes.notifications.newValue;
-      }
-    }
-  }
-
-  function _updateConflictActionOnChange() {
-    if (changes.conflictAction) {
-      if (changes.conflictAction.newValue !== changes.conflictAction.oldValue) {
-        conflictAction = changes.conflictAction.newValue;
-      }
-    }
-  }
+  _setValues(saveFullTextOfPage, changes.saveFullTextOfPage);
+  _setValues(fileNamePrefix, changes.fileNamePrefix);
+  _setValues(dateFormat, changes.dateFormat);
+  _setValues(fileNameComponentOrder, changes.fileNameComponentOrder);
+  _setValues(prefixPageTitleInFileName, changes.prefixPageTitleInFileName);
+  _setValues(fileNameComponentSeparator, changes.fileNameComponentSeparator);
+  _setValues(urlInFile, changes.urlInFile);
+  _setValues(directory, changes.directory);
+  _setValues(directorySelectionDialog, changes.directorySelectionDialog);
+  _setValues(notifications, changes.notifications);
+  _setValues(conflictAction, changes.conflictAction);
+  //
 });
 
-var sending = browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload);
-sending.then(function(response) {
+browser.runtime.sendNativeMessage(HOST_APPLICATION_NAME, testConnectivityPayload).then(function(response) {
   var responseObject = JSON.parse(response);
   if (responseObject.status === 'Success') {
     console.log('SaveTextToFile: Successfully tested communication between native application and webextension.');
