@@ -30,7 +30,7 @@ function saveOptions() {
     directorySelectionDialog: document.getElementById('directorySelectionDialog').checked,
     notifications: document.getElementById('notifications').checked,
     conflictAction: document.getElementById('conflictAction').value
-  }, function() {
+  }).then(function() {
     var status = document.getElementById('status');
     status.style.visibility = 'visible';
     setTimeout(function() {
@@ -41,7 +41,7 @@ function saveOptions() {
 
 function restoreOptions() {
   browser.storage.sync.get({
-    saveFullTextOfPage: false,
+    saveFullTextOfPage: true,
     fileNamePrefix: DEFAULT_FILE_NAME_PREFIX,
     dateFormat: 0,
     fileNameComponentOrder: 0,
@@ -52,7 +52,7 @@ function restoreOptions() {
     directorySelectionDialog: false,
     notifications: true,
     conflictAction: 'uniquify'
-  }, function(items) {
+  }).then(function(items) {
     document.getElementById('saveFullTextOfPage').checked = items.saveFullTextOfPage;
     document.getElementById('fileNamePrefix').value = items.fileNamePrefix;
     document.getElementById('dateFormat').value = items.dateFormat;

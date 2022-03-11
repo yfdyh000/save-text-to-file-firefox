@@ -73,13 +73,12 @@ function saveTextViaApp(directory, sanitizedFileName, fileContents) {
 }
 
 function saveTextToFile(info, tab) {
-  //var tabId = tab.id
-  browser.tabs.executeScript(//tabID, 
+  browser.tabs.executeScript(//tab.id, 
   {
     code: '(' + getSelectionText.toString() + ')(' + saveFullTextOfPage + ')',
     allFrames: true,
     //matchAboutBlank: true
-  }, function (results) {
+  }).then(function (results) {
     //debugger
     if (results[0]) {
       createFileContents(results[0].text, function(fileContents) {
@@ -216,7 +215,7 @@ function startDownloadOfTextToFile(url, fileName, fullPageText) {
     conflictAction: conflictAction
   };
   options.saveAs = !!directorySelectionDialog;
-  browser.downloads.download(options, function(downloadId) {
+  browser.downloads.download(options).then(function(downloadId) {
     if (downloadId) {
       if (notifications) {
         //notify('Text saved.');
@@ -286,7 +285,7 @@ function notify(message, id, fullPageText) {
 }
 
 browser.storage.sync.get({
-  saveFullTextOfPage: false,
+  saveFullTextOfPage: true,
   fileNamePrefix: DEFAULT_FILE_NAME_PREFIX,
   dateFormat: '0',
   fileNameComponentOrder: '0',
@@ -297,7 +296,7 @@ browser.storage.sync.get({
   directorySelectionDialog: false,
   notifications: true,
   conflictAction: 'uniquify'
-}, function(items) {
+}).then(function(items) {
   saveFullTextOfPage = items.saveFullTextOfPage,
   fileNamePrefix = items.fileNamePrefix;
   dateFormat = items.dateFormat;
